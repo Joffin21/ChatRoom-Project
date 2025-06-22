@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat Room</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: #f0f2f5; }
+        .app-container { max-width: 800px; margin: 40px auto; background-color: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden; }
+        
+        #header { 
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+        #header-title { margin: 0; font-size: 1.5em; }
+        #header-controls { display: flex; align-items: center; gap: 10px; }
+        #header-controls button {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #f0f0f0;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        #header-controls button:hover { background-color: #e0e0e0; }
+
+        .view { padding: 20px; }
+        #login-view h3, #lobby-view p { text-align: center; }
+        #login-view form, #lobby-view form { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
+        input { padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        button { padding: 10px 15px; border: none; border-radius: 5px; background-color: #007bff; color: white; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        
+        #chat-view { display: flex; flex-direction: column; height: 60vh; }
+        #messages { flex-grow: 1; overflow-y: auto; border: 1px solid #eee; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
+        #messages li { list-style-type: none; padding: 8px 12px; margin-bottom: 10px; border-radius: 15px; max-width: 70%; word-wrap: break-word; }
+        #messages li.sent { background-color: #007bff; color: white; margin-left: auto; border-bottom-right-radius: 0; }
+        #messages li.received { background-color: #e9e9eb; color: #333; margin-right: auto; border-bottom-left-radius: 0; }
+        #messages li.info { background-color: #f8f9fa; color: #6c757d; text-align: center; max-width: 100%; font-style: italic; font-size: 0.9em; }
+        
+        #message-form { display: flex; gap: 10px; }
+        #message-input { flex-grow: 1; }
+
+        #active-room-list, #existing-room-list { list-style-type: disc; padding-left: 40px; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <div id="header">
+            <h2 id="header-title">Connect to Chat</h2>
+            <div id="header-controls" style="display: none;">
+                <div id="admin-controls" style="display: none;">
+                    <button id="close-room-btn" style="background-color: #dc3545; color: white; border-color: #dc3545;">Close Room</button>
+                </div>
+                <button id="leave-room-btn" style="background-color: #007bff; color: white; border-color: #007bff;">Leave Room</button>
+            </div>
+        </div>
+        
+        <!-- View 1: Login -->
+        <div id="login-view" class="view">
+            <form id="login-form">
+                <input id="username-input" placeholder="Enter your username" required autocomplete="off" />
+                <button>Connect</button>
+            </form>
+        </div>
+
+        <!-- View 2: Lobby -->
+        <div id="lobby-view" class="view" style="display: none;">
+            <p>Welcome, <b id="username-display"></b>!</p>
+            <form id="join-form">
+                <input id="room-input" placeholder="Enter room name" required />
+                <button>Join Room</button>
+            </form>
+            <hr>
+            <h4>Active Rooms:</h4>
+            <ul id="active-room-list"></ul>
+            <hr>
+            <h4>Existing Rooms:</h4>
+            <ul id="existing-room-list"></ul>
+        </div>
+        
+        <!-- View 3: Chat -->
+        <div id="chat-view" class="view" style="display: none;">
+            <div id="messages"></div>
+            <form id="message-form">
+                <input id="message-input" placeholder="Type a message..." required autocomplete="off" />
+                <button>Send</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Views
+        const loginView = document.getElementById('login-view');
+        const lobbyView = document.getElementById('lobby-view');
+        const chatView = document.getElementById('chat-view');
+
+        // Forms and inputs
+        const loginForm = document.getElementById('login-form');
+        const joinForm = document.getElementById('join-form');
+        const messageForm = document.getElementById('message-form');
+        const usernameInput = document.getElementById('username-input');
+        const roomInput = document.getElementById('room-input');
+        const messageInput = document.getElementById('message-input');
+        
+        // Other elements
+        const headerTitle = document.getElementById('header-title');
+        const headerControls = document.getElementById('header-controls');
+        const usernameDisplay = document.getElementById('username-display');
+        const messages = document.getElementById('messages');
+        const activeRoomList = document.getElementById('active-room-list');
+        const existingRoomList = document.getElementById('existing-room-list');
+        const adminControls = document.getElementById('admin-controls');
+        const closeRoomBtn = document.getElementById('close-room-btn');
+        const leaveRoomBtn = document.getElementById('leave-room-btn');
+
+        // State
+        let username = '';
+        let currentRoom = '';
+        let ws;
+
+        // --- View Switching ---
+        function switchToLoginView() {
+            headerTitle.textContent = "Connect to Chat";
+            headerControls.style.display = 'none';
+            loginView.style.display = 'block';
+            lobbyView.style.display = 'none';
+            chatView.style.display = 'none';
+        }
+
+        function switchToLobbyView(uname) {
+            username = uname;
+            usernameDisplay.textContent = username;
+            headerTitle.textContent = 'Lobby';
+            headerControls.style.display = 'none';
+            loginView.style.display = 'none';
+            lobbyView.style.display = 'block';
+            chatView.style.display = 'none';
+        }
+
+        function switchToChatView(roomName, isAdmin) {
+            currentRoom = roomName;
+            headerTitle.textContent = `Room: ${currentRoom}`;
+            headerControls.style.display = 'flex';
+            adminControls.style.display = isAdmin ? 'block' : 'none';
+            loginView.style.display = 'none';
+            lobbyView.style.display = 'none';
+            chatView.style.display = 'flex';
+            messages.innerHTML = '';
+        }
+
+        // --- Step 1: Login ---
+        loginForm.onsubmit = function(event) {
+            event.preventDefault();
+            username = usernameInput.value;
+            if (!username) return;
+            
+            connectWebSocket(username);
+            switchToLobbyView(username);
+        };
+
+        // --- Step 2: Join a Room ---
+        joinForm.onsubmit = function(event) {
+            event.preventDefault();
+            const room = roomInput.value;
+            if (!room) return;
+            currentRoom = room;
+            ws.send(JSON.stringify({ action: "join", room: currentRoom }));
+        };
+
+        // --- Step 3: Send Messages ---
+        messageForm.onsubmit = function(event) {
+            event.preventDefault();
+            if (messageInput.value) {
+                ws.send(JSON.stringify({ action: "message", room: currentRoom, message: messageInput.value }));
+                messageInput.value = '';
+            }
+        };
+
+        closeRoomBtn.onclick = function() {
+            if (confirm("Are you sure you want to close this room? This will delete all history and kick all users.")) {
+                ws.send(JSON.stringify({ action: "close", room: currentRoom }));
+            }
+        };
+
+        leaveRoomBtn.onclick = function() {
+            ws.send(JSON.stringify({ action: "leave", room: currentRoom }));
+            switchToLobbyView(username);
+            messages.innerHTML = '';
+        };
+
+        // --- Central Message Handler ---
+        function handleWebSocketMessage(event) {
+            const data = JSON.parse(event.data);
+            const li = document.createElement('li');
+
+            switch (data.type) {
+                case 'active_room_list':
+                    activeRoomList.innerHTML = '';
+                    data.rooms.forEach(room => {
+                        const roomLi = document.createElement('li');
+                        roomLi.textContent = room;
+                        activeRoomList.appendChild(roomLi);
+                    });
+                    return;
+
+                case 'existing_room_list':
+                    existingRoomList.innerHTML = '';
+                    data.rooms.forEach(room => {
+                        const roomLi = document.createElement('li');
+                        roomLi.textContent = room;
+                        existingRoomList.appendChild(roomLi);
+                    });
+                    return;
+
+                case 'auto_join_prompt':
+                    roomInput.value = data.room;
+                    break;
+                
+                case 'last_room_closed':
+                    li.textContent = "Your last room was closed by an admin.";
+                    li.className = 'message-info';
+                    break;
+
+                case 'join_confirm':
+                    switchToChatView(currentRoom, data.isAdmin);
+                    break;
+
+                case 'info':
+                    li.textContent = data.message;
+                    li.className = 'info';
+                    messages.appendChild(li);
+                    break;
+
+                case 'message':
+                    li.textContent = `${data.sender}: ${data.message}`;
+                    if (data.sender === username) {
+                        li.className = 'sent';
+                    } else {
+                        li.className = 'received';
+                    }
+                    messages.appendChild(li);
+                    break;
+
+                case 'error':
+                    li.textContent = `Error: ${data.message}`;
+                    li.className = 'message-info';
+                    break;
+            }
+            
+            if (li.textContent) {
+                messages.appendChild(li);
+            }
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function connectWebSocket(username) {
+            ws = new WebSocket(`ws://localhost:8000/ws/${username}`);
+            
+            ws.onopen = function() {
+                // Transition to Lobby View
+                switchToLobbyView(username);
+            };
+
+            ws.onmessage = handleWebSocketMessage;
+
+            ws.onclose = function() {
+                alert('Disconnected from server.');
+                // Reset to Login View
+                switchToLoginView();
+            };
+        }
+
+        window.onbeforeunload = function() {
+            if (ws) {
+                ws.onclose = null; // Prevent the default handler from running
+                ws.close();
+            }
+        };
+
+    </script>
+</body>
+</html> 
