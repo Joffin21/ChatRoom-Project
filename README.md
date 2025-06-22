@@ -81,7 +81,3 @@ This project served as a practical exercise in several key backend technologies 
 -   **The "Why" of Docker**: Docker was created to solve the "it works on my machine" problem. It eliminates inconsistencies between development, staging, and production environments by packaging the application, its dependencies, and the necessary parts of its operating system into a standard, portable unit called a container.
 -   **Image vs. Container**: A Docker **image** is a static blueprint or template. A **container** is a live, running instance of an image.
 -   **Port Mapping**: The `-p 8000:8000` flag is the crucial bridge that connects a port on the host machine to a port inside the isolated container, allowing external traffic (like from our browser) to reach the application running inside.
-
-## Future Goals
-
--   **Enhanced UI**: Improve the graphical user interface for a more polished and user-friendly experience. 
